@@ -1,4 +1,3 @@
-
 import time
 import os
 import cv2
@@ -32,16 +31,15 @@ IMAGE_PATH = "captured.jpg"
 
 model = YOLO("yolov5nu.pt")
 
-# ✅ Offline TTS - no internet needed
-engine = pyttsx3.init()
-engine.setProperty('rate', 150)
-engine.setProperty('volume', 1.0)
-engine.say("Audio Lens is ready")
-
+# ✅ Offline TTS - reinitializes every time to fix pyttsx3 repeat bug
 def speak(text):
     print(f"Speaking: {text}")
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 120)
+    engine.setProperty('volume', 1.0)
     engine.say(text)
     engine.runAndWait()
+    engine.stop()
 
 # ✅ Uses laptop webcam instead of libcamera
 def capture_image():
