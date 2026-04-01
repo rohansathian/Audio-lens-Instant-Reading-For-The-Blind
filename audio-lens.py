@@ -1,47 +1,65 @@
+
 import time
 import os
-import asyncio
 import cv2
-import RPi.GPIO as GPIO
 import pytesseract
 from PIL import Image
 from ultralytics import YOLO
-import pyttsx3, pygame, edge_tts
+import pyttsx3
+
+# ✅ Tesseract path for Windows
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+# ✅ Mock GPIO (replaces RPi.GPIO for laptop)
+class GPIO:
+    BCM = IN = PUD_UP = LOW = 0
+    @staticmethod
+    def setmode(m): pass
+    @staticmethod
+    def setup(pin, *args, **kwargs): pass
+    @staticmethod
+    def input(pin): return 1
+    @staticmethod
+    def cleanup(): pass
 
 TEXT_BUTTON_PIN = 17
 OBJECT_BUTTON_PIN = 27
-
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(TEXT_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(OBJECT_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-IMAGE_PATH = "/home/pi/Desktop/captured.jpg"
-VOICE = "en-US-JennyNeural"
-OUTPUT_FILE = "AUDIO.mp3"
+IMAGE_PATH = "captured.jpg"
 
-model = YOLO("yolov5n.pt")
+model = YOLO("yolov5nu.pt")
 
-async def s_speak(text):
-    communicate = edge_tts.Communicate(text, VOICE)
-    await communicate.save(OUTPUT_FILE)
-    pygame.mixer.init()
-    pygame.mixer.music.load(OUTPUT_FILE)
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
+# ✅ Offline TTS - no internet needed
+engine = pyttsx3.init()
+engine.setProperty('rate', 150)
+engine.setProperty('volume', 1.0)
+engine.say("Audio Lens is ready")
 
 def speak(text):
-    asyncio.run(s_speak(text))
+    print(f"Speaking: {text}")
+    engine.say(text)
+    engine.runAndWait()
+
+# ✅ Uses laptop webcam instead of libcamera
 def capture_image():
-    print("Capturing image from Pi Camera...")
-    os.system(f"libcamera-jpeg -o {IMAGE_PATH} --width 1280 --height 720 --nopreview")
-    print("Image captured.")
+    print("Capturing image from webcam...")
+    cap = cv2.VideoCapture(0)
+    time.sleep(1)
+    ret, frame = cap.read()
+    cap.release()
+    if ret:
+        cv2.imwrite(IMAGE_PATH, frame)
+        print("Image captured.")
+    else:
+        print("Failed to capture image.")
 
 def image_to_text(image_path):
     image = Image.open(image_path)
     rotated_image = image.rotate(-90, expand=True)
     extracted_text = pytesseract.image_to_string(rotated_image)
-
     if extracted_text.strip():
         print("Extracted Text:\n", extracted_text)
         speak(extracted_text)
@@ -51,9 +69,9 @@ def image_to_text(image_path):
 
 def detect_object():
     cap = cv2.VideoCapture(0)
+    time.sleep(1)
     ret, frame = cap.read()
     cap.release()
-
     if ret:
         results = model.predict(frame, imgsz=320, conf=0.5)
         detected_objects = set()
@@ -62,7 +80,6 @@ def detect_object():
                 cls = int(box.cls[0])
                 label = model.names[cls]
                 detected_objects.add(label)
-
         if detected_objects:
             object_list = ", ".join(detected_objects)
             print("Detected objects:", object_list)
@@ -73,22 +90,23 @@ def detect_object():
     else:
         print("Failed to capture image.")
         speak("Failed to capture image.")
-print("System is running. Press buttons for respective actions...")
 
+# ✅ Keyboard input instead of physical buttons
+print("System running. Press T for text, O for object detection, Q to quit.")
 try:
     while True:
-        if GPIO.input(TEXT_BUTTON_PIN) == GPIO.LOW:
-            print("Text button pressed!")
+        user_input = input("Enter command (T/O/Q): ").strip().upper()
+        if user_input == "T":
+            print("Text mode!")
             capture_image()
-            time.sleep(2)
+            time.sleep(1)
             image_to_text(IMAGE_PATH)
-            time.sleep(1)
-
-        if GPIO.input(OBJECT_BUTTON_PIN) == GPIO.LOW:
-            print("Object detection button pressed!")
+        elif user_input == "O":
+            print("Object detection mode!")
             detect_object()
-            time.sleep(1)
-
+        elif user_input == "Q":
+            break
+        time.sleep(0.5)
 except KeyboardInterrupt:
-    print("\nProgram stopped. Cleaning up GPIO...")
-    GPIO.cleanup() 
+    print("\nStopped.")
+    GPIO.cleanup()
